@@ -98,38 +98,8 @@ namespace Typewriter.Generation
 
                     item = FindProjectItem(outputPath) ?? _projectItem.ProjectItems.AddFromFile(outputPath);
 
-                    // If js item don't exist, create it and add as a child
-                    if (!System.IO.File.Exists(jsOutputPath))
-                    {
-                        System.IO.File.WriteAllText(jsOutputPath, string.Empty);
-                        item.ProjectItems.AddFromFile(jsOutputPath);
-                    }
-                    else
-                    {
-                        var itemJs = GetExistingItem(_projectItem, Path.GetFileName(jsOutputPath));
-                        // If js item exists in project but is not added as a child
-                        if (itemJs == null && System.IO.File.Exists(jsOutputPath))
-                        {
-                            item.ProjectItems.AddFromFile(jsOutputPath);
-                        }
-                    }
-
-                    // If js.map item don't exist, create it and add as a child
-                    if (!System.IO.File.Exists(jsMapOutputPath))
-                    {
-                        System.IO.File.WriteAllText(jsMapOutputPath, string.Empty);
-                        item.ProjectItems.AddFromFile(jsMapOutputPath);
-                    }
-                    else
-                    {
-                        var itemJsMap = GetExistingItem(_projectItem, Path.GetFileName(jsMapOutputPath));
-                        // If js.map item exists in project but is not added as a child
-                        if (itemJsMap == null && System.IO.File.Exists(jsMapOutputPath))
-                        {
-                            item.ProjectItems.AddFromFile(jsMapOutputPath);
-                        }
-                    }
-
+                    CreateJsSubItems(item, jsOutputPath);
+                    CreateJsSubItems(item, jsMapOutputPath);
                 }
                 else
                 {
@@ -140,6 +110,26 @@ namespace Typewriter.Generation
 
                 if (saveProjectFile)
                     _projectItem.ContainingProject.Save();
+            }
+        }
+
+        private void CreateJsSubItems(ProjectItem tsItem, string outputPath)
+        {
+            //TODO: If file don't exists maybe better not to create it, because it might be created to different place or combined to single file. Better approach would be to add file watcher for dirrectory and when new js or js.map files are created attach to appropriate ts file
+            // If item don't exist, create it and add as a child
+            if (!System.IO.File.Exists(outputPath))
+            {
+                System.IO.File.WriteAllText(outputPath, string.Empty);
+                tsItem.ProjectItems.AddFromFile(outputPath);
+            }
+            else
+            {
+                var itemJsMap = GetExistingItem(_projectItem, Path.GetFileName(outputPath));
+                // If item exists in project but is not added as a child
+                if (itemJsMap == null && System.IO.File.Exists(outputPath))
+                {
+                    tsItem.ProjectItems.AddFromFile(outputPath);
+                }
             }
         }
 
@@ -181,31 +171,15 @@ namespace Typewriter.Generation
                     var newOutputFolderPath = Path.GetDirectoryName(newOutputPath) + @"\";
                     var oldFileName = item.Name;
                     var newFileName = Path.GetFileName(newOutputPath);
+
                     var newJsFileName = Path.ChangeExtension(newFileName, ".js");
+                    var oldJsFileName = Path.ChangeExtension(oldFileName, ".js");
+
                     var newJsMapFileName = Path.ChangeExtension(newFileName, ".js.map");
+                    var oldJsMapFileName = Path.ChangeExtension(oldFileName, ".js.map");
 
-                    var jsItem = GetExistingItem(item, Path.ChangeExtension(oldFileName, ".js"));
-                    // If js file exists update name
-                    if (jsItem != null)
-                    {
-                        jsItem.Name = newJsFileName;
-                    }
-                    else // Otherwise create as a child
-                    {
-                        System.IO.File.WriteAllText(Path.Combine(newOutputFolderPath, newJsFileName), string.Empty);
-                        item.ProjectItems.AddFromFile(Path.Combine(newOutputFolderPath, newJsFileName));
-                    }
-
-                    var jsMapItem = GetExistingItem(item, Path.ChangeExtension(oldFileName, ".js.map"));
-                    if (jsMapItem != null)
-                    {
-                        jsMapItem.Name = newJsMapFileName;
-                    }
-                    else
-                    {
-                        System.IO.File.WriteAllText(Path.Combine(newOutputFolderPath, newJsMapFileName), string.Empty);
-                        item.ProjectItems.AddFromFile(Path.Combine(newOutputFolderPath, newJsMapFileName));
-                    }
+                    UpdateJsSubItems(item, oldJsFileName, newJsFileName, newOutputFolderPath);
+                    UpdateJsSubItems(item, oldJsMapFileName, newJsMapFileName, newOutputFolderPath);
 
                     item.Name = newFileName;
 
@@ -214,6 +188,21 @@ namespace Typewriter.Generation
                     if (saveProjectFile)
                         _projectItem.ContainingProject.Save();
                 }
+            }
+        }
+
+        private void UpdateJsSubItems(ProjectItem tsItem, string oldFileName, string newFileName, string outputFolder)
+        {
+            var jsMapItem = GetExistingItem(tsItem, oldFileName);
+            // If js file exists update name
+            if (jsMapItem != null)
+            {
+                jsMapItem.Name = newFileName;
+            }
+            else // Otherwise create as a child
+            {
+                System.IO.File.WriteAllText(Path.Combine(outputFolder, newFileName), string.Empty);
+                tsItem.ProjectItems.AddFromFile(Path.Combine(outputFolder, newFileName));
             }
         }
 
