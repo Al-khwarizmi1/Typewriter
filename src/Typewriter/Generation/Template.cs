@@ -1,9 +1,9 @@
-﻿using System;
+﻿using EnvDTE;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using EnvDTE;
 using Typewriter.CodeModel.Configuration;
 using Typewriter.Configuration;
 using Typewriter.Generation.Controllers;
@@ -37,7 +37,7 @@ namespace Typewriter.Generation
             _configuration = new SettingsImpl(_projectItem);
 
             var templateClass = _customExtensions.FirstOrDefault();
-            if (templateClass?.GetConstructor(new []{typeof(Settings)}) != null)
+            if (templateClass?.GetConstructor(new[] { typeof(Settings) }) != null)
             {
                 Activator.CreateInstance(templateClass, _configuration);
             }
@@ -87,13 +87,49 @@ namespace Typewriter.Generation
             {
                 ProjectItem item;
                 var outputPath = GetOutputPath(file);
+                var jsOutputPath = Path.ChangeExtension(outputPath, ".js");
+                var jsMapOutputPath = Path.ChangeExtension(outputPath, ".js.map");
 
                 if (HasChanged(outputPath, output))
                 {
                     CheckOutFileFromSourceControl(outputPath);
 
                     System.IO.File.WriteAllText(outputPath, output);
+
                     item = FindProjectItem(outputPath) ?? _projectItem.ProjectItems.AddFromFile(outputPath);
+
+                    // If js item don't exist, create it and add as a child
+                    if (!System.IO.File.Exists(jsOutputPath))
+                    {
+                        System.IO.File.WriteAllText(jsOutputPath, string.Empty);
+                        item.ProjectItems.AddFromFile(jsOutputPath);
+                    }
+                    else
+                    {
+                        var itemJs = GetExistingItem(_projectItem, Path.GetFileName(jsOutputPath));
+                        // If js item exists in project but is not added as a child
+                        if (itemJs == null && System.IO.File.Exists(jsOutputPath))
+                        {
+                            item.ProjectItems.AddFromFile(jsOutputPath);
+                        }
+                    }
+
+                    // If js.map item don't exist, create it and add as a child
+                    if (!System.IO.File.Exists(jsMapOutputPath))
+                    {
+                        System.IO.File.WriteAllText(jsMapOutputPath, string.Empty);
+                        item.ProjectItems.AddFromFile(jsMapOutputPath);
+                    }
+                    else
+                    {
+                        var itemJsMap = GetExistingItem(_projectItem, Path.GetFileName(jsMapOutputPath));
+                        // If js.map item exists in project but is not added as a child
+                        if (itemJsMap == null && System.IO.File.Exists(jsMapOutputPath))
+                        {
+                            item.ProjectItems.AddFromFile(jsMapOutputPath);
+                        }
+                    }
+
                 }
                 else
                 {
@@ -142,8 +178,37 @@ namespace Typewriter.Generation
                     }
 
                     var newOutputPath = GetOutputPath(file);
+                    var newOutputFolderPath = Path.GetDirectoryName(newOutputPath) + @"\";
+                    var oldFileName = item.Name;
+                    var newFileName = Path.GetFileName(newOutputPath);
+                    var newJsFileName = Path.ChangeExtension(newFileName, ".js");
+                    var newJsMapFileName = Path.ChangeExtension(newFileName, ".js.map");
 
-                    item.Name = Path.GetFileName(newOutputPath);
+                    var jsItem = GetExistingItem(item, Path.ChangeExtension(oldFileName, ".js"));
+                    // If js file exists update name
+                    if (jsItem != null)
+                    {
+                        jsItem.Name = newJsFileName;
+                    }
+                    else // Otherwise create as a child
+                    {
+                        System.IO.File.WriteAllText(Path.Combine(newOutputFolderPath, newJsFileName), string.Empty);
+                        item.ProjectItems.AddFromFile(Path.Combine(newOutputFolderPath, newJsFileName));
+                    }
+
+                    var jsMapItem = GetExistingItem(item, Path.ChangeExtension(oldFileName, ".js.map"));
+                    if (jsMapItem != null)
+                    {
+                        jsMapItem.Name = newJsMapFileName;
+                    }
+                    else
+                    {
+                        System.IO.File.WriteAllText(Path.Combine(newOutputFolderPath, newJsMapFileName), string.Empty);
+                        item.ProjectItems.AddFromFile(Path.Combine(newOutputFolderPath, newJsMapFileName));
+                    }
+
+                    item.Name = newFileName;
+
                     SetMappedSourceFile(item, newPath);
 
                     if (saveProjectFile)
@@ -200,6 +265,26 @@ namespace Typewriter.Generation
             return null;
         }
 
+        private ProjectItem GetExistingItem(ProjectItem parent, string fileName)
+        {
+            foreach (ProjectItem item in parent.ProjectItems)
+            {
+                try
+                {
+                    if (fileName.Equals(item.Name, StringComparison.InvariantCultureIgnoreCase))
+                    {
+                        return item;
+                    }
+                }
+                catch
+                {
+                    // Can't read properties from project item sometimes when deleting miltiple files
+                }
+            }
+
+            return null;
+        }
+
         private string GetOutputPath(File file)
         {
             var path = file.FullName;
@@ -219,8 +304,8 @@ namespace Typewriter.Generation
                     filename.Substring(0, filename.Length - 5) :
                     filename.Substring(0, filename.LastIndexOf(".", StringComparison.Ordinal));
 
-                var extension = filename.EndsWith(".d.ts", StringComparison.OrdinalIgnoreCase) ? 
-                    ".d.ts" : 
+                var extension = filename.EndsWith(".d.ts", StringComparison.OrdinalIgnoreCase) ?
+                    ".d.ts" :
                     filename.Substring(filename.LastIndexOf(".", StringComparison.Ordinal));
 
                 outputPath = Path.Combine(directory, $"{name} ({i}){extension}");
